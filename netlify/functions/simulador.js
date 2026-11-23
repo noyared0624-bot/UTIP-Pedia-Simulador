@@ -191,27 +191,42 @@ Devuelve exactamente este JSON:
 }`;
     }
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ parts: [{ text: userPrompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            temperature: 0.25
-          }
-        })
-      }
-    );
-
-    const data = await response.json();
-    if (!response.ok || !data.candidates?.length) {
-      throw new Error("Gemini: " + (data.error?.message || JSON.stringify(data).slice(0, 300)));
+    if (!apiKey) {
+      throw new Error("Falta la variable GEMINI_API_KEY en Netlify.");
     }
-    const textResult = data.candidates[0].content.parts[0].text;
+
+    const requestBody = JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.25
+      }
+    });
+
+    // Reintenta automáticamente si Gemini está saturado (429/500/503).
+    const MAX_INTENTOS = 3;
+    let data = null;
+    let ultimoError = "";
+    for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: requestBody }
+      );
+      data = await response.json().catch(() => ({}));
+      if (response.ok && data.candidates?.length) break;
+
+      ultimoError = data.error?.message || `HTTP ${response.status}`;
+      const reintentable = [429, 500, 503].includes(response.status);
+      if (!reintentable || intento === MAX_INTENTOS) {
+        throw new Error("Gemini: " + ultimoError);
+      }
+      await new Promise(r => setTimeout(r, 1500 * intento));
+    }
+
+    let textResult = data.candidates[0].content?.parts?.[0]?.text || "";
+    textResult = textResult.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+    JSON.parse(textResult); // valida que sea JSON antes de enviarlo a la app
 
     return {
       statusCode: 200,
