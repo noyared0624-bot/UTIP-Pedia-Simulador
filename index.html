@@ -891,7 +891,7 @@ ${est.contenido}`;
     const beatsPerSec = effectiveRate > 0 ? effectiveRate / 60 : 0.5;
     const breathsPerSec = currentFR > 0 ? currentFR / 60 : 0.2;
 
-    if (simData && !simData.estado.fallecido) {
+    if (simData && simData.estado && !simData.estado.fallecido) {
       if (isAsystole) {
         SoundEngine.startFlatline();
       } else {
@@ -1117,6 +1117,20 @@ ${est.contenido}`;
   const savedUser = localStorage.getItem("sim_ped_user");
   if (savedUser) document.getElementById("input-usuario").value = savedUser;
 
+  async function llamarSimulador(payload) {
+    const res = await fetch("/.netlify/functions/simulador", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    let data = null;
+    try { data = await res.json(); } catch (_) {}
+    if (!res.ok || !data) {
+      throw new Error((data && (data.detalle || data.error)) || `El servidor respondió ${res.status}`);
+    }
+    return data;
+  }
+
   async function generarCaso() {
     const promptUsuario = document.getElementById("input-escenario").value.trim();
     const usuario = document.getElementById("input-usuario").value.trim() || "Anónimo";
@@ -1130,11 +1144,8 @@ ${est.contenido}`;
     btn.textContent = "Ingresando...";
 
     try {
-      const res = await fetch("/.netlify/functions/simulador", {
-        method: "POST",
-        body: JSON.stringify({ modo: "generar", promptUsuario })
-      });
-      const data = await res.json();
+      const data = await llamarSimulador({ modo: "generar", promptUsuario });
+      if (!data.paciente || !data.estado) throw new Error("La IA devolvió un caso incompleto. Intenta de nuevo.");
 
       simData = { paciente: data.paciente, estado: data.estado, historial: [] };
       pendingStudies = [];
@@ -1161,7 +1172,7 @@ ${est.contenido}`;
         detenerRelojReal();
       }
     } catch (e) {
-      alert("Error conectando con Netlify Functions.");
+      alert("No se pudo ingresar el paciente:\n" + e.message);
     } finally {
       btn.disabled = false;
       btn.textContent = "Ingresar Paciente";
@@ -1178,11 +1189,8 @@ ${est.contenido}`;
     }
 
     try {
-      const res = await fetch("/.netlify/functions/simulador", {
-        method: "POST",
-        body: JSON.stringify({ modo: "accion", modoJuego: gameMode, estadoActual: simData, accionClinica })
-      });
-      const data = await res.json();
+      const data = await llamarSimulador({ modo: "accion", modoJuego: gameMode, estadoActual: simData, accionClinica });
+      if (!data.estado_nuevo) throw new Error("La IA devolvió una respuesta incompleta. Repite la orden.");
 
       const estabaEnParo = simData.estado.en_paro;
       const minsUsados = data.minutos_consumidos || 2;
@@ -1240,7 +1248,7 @@ ${est.contenido}`;
         setTimeout(() => evaluarCaso(), 1200);
       }
     } catch (e) {
-      agregarLog("Error ejecutando la orden.", "crit");
+      agregarLog("Error ejecutando la orden: " + e.message, "crit");
     }
   }
 
@@ -1310,15 +1318,11 @@ ${est.contenido}`;
     btn.textContent = "Evaluando...";
 
     try {
-      const res = await fetch("/.netlify/functions/simulador", {
-        method: "POST",
-        body: JSON.stringify({ modo: "evaluar", modoJuego: gameMode, estadoActual: simData })
-      });
-      const evalData = await res.json();
+      const evalData = await llamarSimulador({ modo: "evaluar", modoJuego: gameMode, estadoActual: simData });
 
       document.getElementById("eval-score").textContent = `${evalData.puntaje}/100`;
-      const aciertos = evalData.aciertos.map(a => `<li>✅ ${a}</li>`).join("");
-      const errores = evalData.errores_y_mejoras.map(e => `<li>⚠️ ${e}</li>`).join("");
+      const aciertos = (evalData.aciertos || []).map(a => `<li>✅ ${a}</li>`).join("");
+      const errores = (evalData.errores_y_mejoras || []).map(e => `<li>⚠️ ${e}</li>`).join("");
 
       document.getElementById("eval-body").innerHTML = `
         <p><strong>Modalidad:</strong> ${gameMode === "real" ? "⏱️ Modo Real (Contrarreloj)" : "🎓 Modo Tutor"} • <strong>Desenlace:</strong> ${evalData.desenlace_clinico || (simData.estado.fallecido ? "Fallecimiento" : "Sobrevida")}</p>
@@ -1352,7 +1356,7 @@ ${est.contenido}`;
         statusEl.textContent = "☁️ Guardado en Firebase.";
       }
     } catch (e) {
-      alert("Error al generar la evaluación.");
+      alert("Error al generar la evaluación:\n" + e.message);
     } finally {
       btn.disabled = false;
       btn.textContent = "Finalizar y Evaluar Dx";
