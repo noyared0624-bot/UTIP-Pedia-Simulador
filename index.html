@@ -1,0 +1,1416 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulador Clínico Pediátrico UTIP | Modo Tutor & Modo Real</title>
+  <style>
+    :root {
+      --bg: #060911; --panel: #0f172a; --panel-dark: #090e1a; --border: #1e293b;
+      --text: #f1f5f9; --muted: #94a3b8; --green: #10b981;
+      --blue: #38bdf8; --yellow: #f59e0b; --red: #ef4444; --purple: #a855f7; --teal: #14b8a6;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); margin: 0; padding: 12px; }
+    .container { max-width: 1420px; margin: 0 auto; display: grid; gap: 10px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+    
+    .row-flex { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    input[type="text"], input[type="number"], select {
+      background: #04070d; border: 1px solid #334155; color: var(--text);
+      padding: 7px 10px; border-radius: 7px; font-size: 0.83rem;
+    }
+    .flex-grow { flex: 1; min-width: 220px; }
+    button {
+      background: #1e293b; color: var(--text); border: 1px solid #334155;
+      padding: 7px 11px; border-radius: 7px; cursor: pointer; font-size: 0.8rem; transition: 0.15s;
+    }
+    button:hover:not(:disabled) { background: #334155; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.primary { background: #0284c7; border-color: #0369a1; font-weight: 600; }
+    button.danger { background: #dc2626; border-color: #b91c1c; font-weight: 600; }
+    button.teal { background: #0d9488; border-color: #0f766e; font-weight: 600; }
+    button.active-toggle { background: #065f46; border-color: #10b981; color: #6ee7b7; }
+
+    /* Selector de Modo Tutor vs Real */
+    .mode-switcher { display: flex; background: #04070d; border: 1px solid #334155; border-radius: 8px; padding: 3px; gap: 4px; }
+    .mode-btn { border: none; background: transparent; color: var(--muted); padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 0.8rem; }
+    .mode-btn.active-tutor { background: #0284c7; color: #fff; }
+    .mode-btn.active-real { background: #dc2626; color: #fff; }
+
+    /* Reloj de Guardia en Modo Real */
+    .clock-pill { background: #1e1b4b; border: 1px solid #4338ca; color: #c7d2fe; padding: 5px 12px; border-radius: 7px; font-weight: 800; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+    .clock-pill.real-active { background: #450a0a; border-color: #ef4444; color: #fca5a5; }
+
+    /* Caja de Feedback Inmediato (Solo Modo Tutor) */
+    .tutor-box {
+      display: none; background: #082f49; border: 1px solid #0284c7; border-left: 5px solid #38bdf8;
+      border-radius: 9px; padding: 10px 14px; font-size: 0.85rem; line-height: 1.45;
+    }
+    .tutor-box.warn { background: #422006; border-color: #d97706; border-left-color: #f59e0b; }
+    .tutor-box.crit { background: #450a0a; border-color: #dc2626; border-left-color: #ef4444; }
+    .tutor-box.good { background: #064e3b; border-color: #059669; border-left-color: #10b981; }
+
+    /* BANNER CÓDIGO AZUL / PALS */
+    @keyframes pulse-red {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); border-color: #ef4444; }
+      50% { box-shadow: 0 0 18px 4px rgba(239, 68, 68, 0.45); border-color: #fca5a5; }
+    }
+    .code-blue-panel {
+      display: none; background: #2a080d; border: 2px solid var(--red); border-radius: 10px;
+      padding: 12px; animation: pulse-red 1.5s infinite;
+    }
+    .code-blue-panel.active { display: block; }
+    .pals-doses { display: flex; gap: 12px; flex-wrap: wrap; background: #160407; padding: 7px 10px; border-radius: 6px; font-size: 0.78rem; margin: 8px 0; border: 1px solid #7f1d1d; }
+    .pals-doses strong { color: #fca5a5; }
+
+    .exitus-banner {
+      display: none; background: #18181b; border: 2px solid #71717a; border-radius: 10px;
+      padding: 14px; text-align: center; color: #e4e4e7;
+    }
+
+    /* Cinta Cálculos */
+    .calc-strip {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 6px;
+      background: var(--panel-dark); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.76rem;
+    }
+    .calc-item strong { color: var(--blue); display: block; font-size: 0.7rem; text-transform: uppercase; }
+
+    /* BLOQUE SUPERIOR: MONITOR UCI + VENTILADOR */
+    .icu-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 10px; }
+    @media (max-width: 1100px) { .icu-grid { grid-template-columns: 1fr; } }
+
+    .monitor-box { background: #020408; border: 2px solid #1e293b; border-radius: 10px; padding: 10px; display: grid; gap: 6px; }
+    .monitor-box.arrest { border-color: var(--red); }
+    .wave-row { display: grid; grid-template-columns: 1fr 150px; gap: 8px; align-items: center; background: #060b14; border-radius: 6px; padding: 4px 8px; border: 1px solid #0f172a; }
+    canvas.wave-canvas { width: 100%; height: 46px; display: block; }
+    .num-box { text-align: right; }
+    .num-label { font-size: 0.68rem; text-transform: uppercase; font-weight: 700; opacity: 0.85; }
+    .num-val { font-size: 1.55rem; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+    .num-sub { font-size: 0.68rem; color: var(--muted); }
+    .c-ecg { color: var(--green); }
+    .c-spo2 { color: var(--blue); }
+    .c-pa { color: var(--red); }
+    .c-etco2 { color: var(--yellow); }
+
+    .vitals-subgrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; background: #060b14; padding: 7px; border-radius: 6px; border: 1px solid #0f172a; text-align: center; font-size: 0.72rem; }
+    .vitals-subgrid strong { display: block; font-size: 0.92rem; color: #e2e8f0; margin-top: 2px; }
+
+    .status-strip { display: flex; flex-wrap: wrap; gap: 5px; font-size: 0.72rem; }
+    .dev-pill { background: #1e293b; color: #94a3b8; padding: 2px 7px; border-radius: 4px; }
+    .dev-pill.on { background: #064e3b; color: #34d399; border: 1px solid #059669; font-weight: 600; }
+    .inf-pill { background: #3b0764; color: #e9d5ff; border: 1px solid #7e22ce; padding: 2px 7px; border-radius: 4px; font-weight: 600; }
+
+    /* Ventilador Mecánico */
+    .vent-box { background: #030812; border: 2px solid #0f766e; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; }
+    .vent-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
+    .vm-card { background: #081224; border: 1px solid #1e293b; border-radius: 6px; padding: 6px 8px; }
+    .vm-card span { font-size: 0.66rem; color: var(--muted); display: block; }
+    .vm-card strong { font-size: 0.98rem; color: #2dd4bf; font-variant-numeric: tabular-nums; }
+    .vm-card.alert strong { color: var(--red); }
+    .vent-ctrls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: #081224; padding: 8px; border-radius: 6px; border: 1px solid #1e293b; }
+    .vent-ctrls label { display: block; font-size: 0.66rem; color: var(--muted); margin-bottom: 2px; }
+    .vent-ctrls input, .vent-ctrls select { width: 100%; padding: 4px 6px; font-size: 0.78rem; }
+
+    /* ÁREA INFERIOR */
+    .work-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 10px; }
+    @media (max-width: 950px) { .work-grid { grid-template-columns: 1fr; } }
+
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+    .tab-btn { background: transparent; border: 1px solid transparent; color: var(--muted); padding: 5px 10px; border-radius: 6px; font-weight: 600; }
+    .tab-btn.active { background: #1e293b; color: var(--blue); border-color: #334155; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    .ef-grid { display: grid; gap: 6px; font-size: 0.8rem; }
+    .ef-item { background: var(--panel-dark); padding: 7px 10px; border-radius: 6px; border-left: 3px solid var(--blue); }
+    .ef-item strong { color: var(--blue); display: block; font-size: 0.74rem; text-transform: uppercase; }
+
+    .log-box { height: 270px; overflow-y: auto; background: #04070d; padding: 8px; border-radius: 8px; font-size: 0.81rem; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--border); }
+    .log-item { padding: 6px 9px; border-radius: 6px; background: var(--panel); border-left: 3px solid var(--blue); }
+    .log-item.warn { border-left-color: var(--yellow); }
+    .log-item.crit { border-left-color: var(--red); background: #1f1115; }
+    .log-item.good { border-left-color: var(--green); }
+
+    .study-card { background: var(--panel-dark); padding: 9px; border-radius: 7px; font-size: 0.8rem; border: 1px solid #1e293b; margin-bottom: 8px; white-space: pre-line; }
+    .study-card.pending { border-color: var(--yellow); color: #fde68a; }
+
+    .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.86); padding: 16px; overflow-y: auto; z-index: 50; }
+    .modal-content { max-width: 820px; margin: 20px auto; background: var(--panel); border: 1px solid #334155; border-radius: 12px; padding: 20px; }
+    .history-item { background: var(--panel-dark); border: 1px solid #1e293b; border-radius: 8px; padding: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    footer { text-align: center; font-size: 0.76rem; color: var(--muted); padding: 4px 0; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- CABECERA, SELECTOR DE MODO Y GENERADOR -->
+  <div class="card">
+    <div class="row-flex" style="justify-content:space-between; margin-bottom:8px;">
+      <div class="row-flex">
+        <strong style="color:var(--blue); font-size:1.05rem;">🏥 Simulador Clínico Pediátrico UTIP</strong>
+        <div class="mode-switcher">
+          <button class="mode-btn active-tutor" id="btn-mode-tutor">🎓 Modo Tutor (Sin tiempo + Feedback)</button>
+          <button class="mode-btn" id="btn-mode-real">⏱️ Modo Real (Cronómetro + Demora)</button>
+        </div>
+        <span class="clock-pill" id="clock-display">⏱️ Guardia: 00:00 (Min 0)</span>
+      </div>
+
+      <div class="row-flex">
+        <button id="btn-audio">🔇 Sonido UCI</button>
+        <button id="btn-historial">📚 Casos Guardados</button>
+        <button class="danger" id="btn-finalizar" disabled>Finalizar y Evaluar Dx</button>
+      </div>
+    </div>
+
+    <div class="row-flex">
+      <input type="text" id="input-usuario" placeholder="Médico / Rol (ej. Dr. Pérez - R1)" style="width:185px;" />
+      <select id="select-plantilla" style="width:210px;">
+        <option value="">-- Casos Rápidos Sugeridos --</option>
+        <option value="Lactante de 8 meses (8.5 kg) con fiebre de 39.5°C, petequias, somnolencia y llenado capilar de 4 segundos.">Choque Séptico (Lactante)</option>
+        <option value="Escolar de 7 años (24 kg) con polidipsia, pérdida de peso, respiración de Kussmaul, dolor abdominal y glicemia de 480 mg/dL.">Cetoacidosis Diabética Grave</option>
+        <option value="Preescolar de 3 años (14 kg) con crisis convulsiva tónico-clónica generalizada de 25 minutos de evolución que no cede.">Estatus Epiléptico Refractario</option>
+        <option value="Lactante de 4 meses (6.2 kg) con rinorrea, tiraje subcostal grave, sibilancias espiratorias y saturación 86% aire ambiente.">Bronquiolitis Grave / Falla Resp.</option>
+        <option value="Neonato de 9 días (3.1 kg) traído por rechazo al alimento, palidez terrosa, taquipnea, pulsos femorales ausentes y hepatomegalia.">Cardiopatía Ductus-Dependiente</option>
+      </select>
+      <input type="text" id="input-escenario" class="flex-grow" placeholder="O escribe cualquier paciente hipotético libre..." />
+      <button class="primary" id="btn-generar">Ingresar Paciente</button>
+    </div>
+    <div style="font-size:0.78rem; color:var(--muted); margin-top:6px;" id="badge-paciente">Selecciona Modo Tutor o Modo Real e ingresa un paciente.</div>
+  </div>
+
+  <!-- CAJA DE RETROALIMENTACIÓN INMEDIATA (SOLO MODO TUTOR) -->
+  <div class="tutor-box" id="tutor-box">
+    <strong style="display:block; margin-bottom:3px;" id="tutor-title">🎓 Explicación del Tutor Clínico:</strong>
+    <span id="tutor-text"></span>
+  </div>
+
+  <!-- BANNER CÓDIGO AZUL / PALS -->
+  <div class="code-blue-panel" id="code-blue-panel">
+    <div class="row-flex" style="justify-content:space-between;">
+      <strong style="color:#fca5a5; font-size:1rem;">🚨 CÓDIGO AZUL • PARO CARDIORRESPIRATORIO (<span id="pals-ritmo">ASISTOLIA</span>)</strong>
+      <span style="background:#7f1d1d; color:#fff; padding:4px 10px; border-radius:6px; font-weight:800; font-variant-numeric:tabular-nums;" id="pals-timer">Ciclo RCP: 00:00</span>
+    </div>
+    <div class="pals-doses">
+      <span><strong>Adrenalina IV/IO (0.01 mg/kg):</strong> <span id="pals-epi">-</span></span>
+      <span><strong>Desfibrilación (2 → 4 J/kg):</strong> <span id="pals-desfib">-</span></span>
+      <span><strong>Amiodarona (5 mg/kg):</strong> <span id="pals-amio">-</span></span>
+      <span><strong>Ciclos RCP realizados:</strong> <span id="pals-ciclos">0</span></span>
+    </div>
+    <div class="row-flex">
+      <button class="danger" id="btn-pals-rcp">🫀 Ciclo RCP 2 min (Compresiones 15:2 / Asíncronas)</button>
+      <button class="primary" id="btn-pals-epi">💉 Adrenalina 0.01 mg/kg IV/IO</button>
+      <select id="pals-joules" style="width:110px;"></select>
+      <button style="background:#b45309; border-color:#d97706; font-weight:600;" id="btn-pals-shock">⚡ Descarga (Desfibrilar)</button>
+      <button id="btn-pals-amio">💊 Amiodarona 5 mg/kg</button>
+      <button id="btn-pals-ht">🔍 Tratar Causas Reversibles (H y T)</button>
+      <button style="background:#3f3f46;" id="btn-pals-stop">🛑 Detener Maniobras (Declarar Óbito)</button>
+    </div>
+  </div>
+
+  <!-- BANNER FALLECIMIENTO -->
+  <div class="exitus-banner" id="exitus-banner">
+    <strong style="font-size:1.1rem; color:#f87171;">🖤 PACIENTE FALLECIDO • FIN DE LA SIMULACIÓN</strong>
+    <p style="margin:6px 0 0 0; font-size:0.85rem; color:#a1a1aa;">Se ha abierto la auditoría de morbimortalidad con el análisis fisiopatológico del caso.</p>
+  </div>
+
+  <!-- CINTA DE CÁLCULOS ANTROPOMÉTRICOS -->
+  <div class="calc-strip" id="calc-strip" style="display:none;">
+    <div class="calc-item"><strong>Peso / Talla / SC</strong><span id="c-antro">-</span></div>
+    <div class="calc-item"><strong>TET c/ Balón (Par 0.5)</strong><span id="c-tet">-</span></div>
+    <div class="calc-item"><strong>SRI: Ketamina / Fentanilo</strong><span id="c-sri1">-</span></div>
+    <div class="calc-item"><strong>SRI: Rocuronio / Midazolam</strong><span id="c-sri2">-</span></div>
+    <div class="calc-item"><strong>VT Protector (6-8 ml/kg)</strong><span id="c-vt">-</span></div>
+    <div class="calc-item"><strong>Bolo 20 ml/kg / H-S 24h</strong><span id="c-liq">-</span></div>
+  </div>
+
+  <!-- BLOQUE SUPERIOR: MONITOR MULTIPARÁMETRO + VENTILADOR MECÁNICO -->
+  <div class="icu-grid">
+    <div class="monitor-box" id="monitor-box">
+      <div class="wave-row">
+        <canvas id="canvas-ecg" class="wave-canvas"></canvas>
+        <div class="num-box c-ecg">
+          <div class="num-label">FC (lpm) • <span id="v-ritmo">Sinusal</span></div>
+          <div class="num-val" id="v-fc">--</div>
+          <div class="num-sub" id="v-min">Minuto clínico: 0</div>
+        </div>
+      </div>
+
+      <div class="wave-row">
+        <canvas id="canvas-spo2" class="wave-canvas"></canvas>
+        <div class="num-box c-spo2">
+          <div class="num-label">SatO₂ (%)</div>
+          <div class="num-val" id="v-spo2">--%</div>
+          <div class="num-sub" id="v-o2">Aire ambiente</div>
+        </div>
+      </div>
+
+      <div class="wave-row">
+        <canvas id="canvas-pa" class="wave-canvas"></canvas>
+        <div class="num-box c-pa">
+          <div class="num-label" id="v-pa-tipo">PANI (mmHg)</div>
+          <div class="num-val" id="v-pa" style="font-size:1.35rem;">--/--</div>
+          <div class="num-sub" id="v-pam">PAM: -- mmHg</div>
+        </div>
+      </div>
+
+      <div class="wave-row">
+        <canvas id="canvas-etco2" class="wave-canvas"></canvas>
+        <div class="num-box c-etco2">
+          <div class="num-label">EtCO₂ (mmHg)</div>
+          <div class="num-val" id="v-etco2">--</div>
+          <div class="num-sub" id="v-fr">FR: -- rpm</div>
+        </div>
+      </div>
+
+      <div class="vitals-subgrid">
+        <div>Temp<strong id="v-temp">-- °C</strong></div>
+        <div>Llenado Cap.<strong id="v-lc">-- s</strong></div>
+        <div>Glasgow<strong id="v-gcs">--</strong></div>
+        <div>Diuresis<strong id="v-diuresis">S/Sonda</strong></div>
+        <div>Balance H.<strong id="v-balance">0 ml</strong></div>
+      </div>
+
+      <div class="status-strip" id="status-strip">
+        <span class="dev-pill" id="dev-iv">Vía IV</span>
+        <span class="dev-pill" id="dev-io">Intraósea</span>
+        <span class="dev-pill" id="dev-cvc">CVC</span>
+        <span class="dev-pill" id="dev-la">Línea Art.</span>
+        <span class="dev-pill" id="dev-sv">Sonda Vesical</span>
+        <span class="dev-pill" id="dev-tet">Sin TET</span>
+        <span id="infusiones-badges" style="display:contents;"></span>
+      </div>
+    </div>
+
+    <!-- PANTALLA VENTILADOR MECÁNICO -->
+    <div class="vent-box">
+      <div>
+        <div class="row-flex" style="justify-content:space-between; border-bottom:1px solid #134e4a; padding-bottom:6px;">
+          <strong style="color:#2dd4bf; font-size:0.9rem;">🫁 Ventilador Mecánico UTIP</strong>
+          <span id="vent-badge" style="background:#1e293b; color:#94a3b8; padding:2px 8px; border-radius:5px; font-size:0.72rem; font-weight:700;">EN ESPERA (STANDBY)</span>
+        </div>
+
+        <div class="vent-metrics">
+          <div class="vm-card"><span>VTe / Vol. Minuto</span><strong id="vm-vte">-- ml | -- L</strong></div>
+          <div class="vm-card" id="box-ppico"><span>P. Pico / Meseta</span><strong id="vm-pres">-- / -- cmH₂O</strong></div>
+          <div class="vm-card" id="box-dp"><span>Driving Press (ΔP)</span><strong id="vm-dp">-- cmH₂O</strong></div>
+          <div class="vm-card"><span>Distensibilidad (Cest)</span><strong id="vm-comp">-- ml/cmH₂O</strong></div>
+          <div class="vm-card"><span>Resistencia (Raw)</span><strong id="vm-raw">-- cmH₂O/L/s</strong></div>
+          <div class="vm-card"><span>Índice Kirby (PaFi)</span><strong id="vm-pafi">-- mmHg</strong></div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:0.7rem; color:#5eead4; margin-bottom:4px; font-weight:600;">Ajuste de Parámetros Ventilatorios:</div>
+        <div class="vent-ctrls">
+          <div>
+            <label>Modo</label>
+            <select id="vc-modo">
+              <option value="PCV">PCV (Presión)</option>
+              <option value="VCV">VCV (Volumen)</option>
+              <option value="SIMV-PC">SIMV + PS</option>
+              <option value="VNNI">VNNI / CPAP</option>
+              <option value="HFNC">Cánula Alto Flujo</option>
+            </select>
+          </div>
+          <div><label>FiO₂ (%)</label><input type="number" id="vc-fio2" value="50" min="21" max="100" /></div>
+          <div><label>FR (rpm)</label><input type="number" id="vc-fr" value="24" min="8" max="60" /></div>
+          <div><label>PIP / VT (ml/kg)</label><input type="number" id="vc-pip" value="18" min="4" max="40" /></div>
+          <div><label>PEEP (cmH₂O)</label><input type="number" id="vc-peep" value="5" min="3" max="18" /></div>
+          <div><label>Ti (seg)</label><input type="number" id="vc-ti" value="0.7" step="0.1" min="0.3" max="2.0" /></div>
+        </div>
+        <button class="teal" id="btn-aplicar-vent" style="width:100%; margin-top:8px;">Aplicar Parámetros al Ventilador</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÁREA INFERIOR: ÓRDENES CLÍNICAS Y EXPEDIENTE -->
+  <div class="work-grid">
+    <div class="card">
+      <div class="tabs" id="left-tabs">
+        <button class="tab-btn active" data-tab="tab-ef">🩺 Historia & Padres</button>
+        <button class="tab-btn" data-tab="tab-proc">🛠️ Vía Aérea & Accesos</button>
+        <button class="tab-btn" data-tab="tab-liq">💧 Líquidos & Infusiones</button>
+        <button class="tab-btn" data-tab="tab-meds">💊 Fármacos & Orden Libre</button>
+      </div>
+
+      <div class="tab-pane active" id="tab-ef">
+        <div class="ef-grid">
+          <div class="ef-item"><strong>Motivo de Consulta e Historia</strong><span id="ef-anamnesis">Ingresa un paciente para ver su historia clínica.</span></div>
+          <div class="ef-item"><strong>Aspecto General</strong><span id="ef-general">--</span></div>
+          <div class="ef-item"><strong>Neurológico</strong><span id="ef-neuro">--</span></div>
+          <div class="ef-item"><strong>Respiratorio</strong><span id="ef-resp">--</span></div>
+          <div class="ef-item"><strong>Cardiovascular</strong><span id="ef-cardio">--</span></div>
+          <div class="ef-item"><strong>Abdomen y Renal</strong><span id="ef-abdomen">--</span></div>
+        </div>
+        <div class="row-flex" style="margin-top:8px;">
+          <button class="quick-btn" data-accion="Reevaluar examen físico completo por sistemas">🔄 Reevaluar Ex. Físico</button>
+          <button id="btn-auscultar">🩺 Auscultar Tórax</button>
+          <input type="text" id="input-padres" class="flex-grow" placeholder="Interrogar a padres: ej. ¿Hace cuánto no orina? ¿Qué medicinas le dieron?" />
+          <button class="primary" id="btn-padres">Preguntar</button>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="tab-proc">
+        <div style="font-size:0.75rem; color:var(--muted); margin-bottom:4px;">Oxigenoterapia No Invasiva:</div>
+        <div class="row-flex" style="margin-bottom:10px;">
+          <button class="quick-btn" data-accion="Colocar cánula nasal a 2 L/min">Cánula Nasal 2L</button>
+          <button class="quick-btn" data-accion="Colocar mascarilla con reservorio a 15 L/min">Mascarilla Reservorio 15L</button>
+          <button class="quick-btn" data-accion="Iniciar cánula nasal de alto flujo (HFNC) a 2 L/kg/min con FiO2 50%">Alto Flujo (HFNC)</button>
+        </div>
+
+        <div style="font-size:0.75rem; color:var(--muted); margin-bottom:4px;">Secuencia Rápida de Intubación (SRI):</div>
+        <div class="row-flex" style="margin-bottom:10px;">
+          <select id="sri-tet">
+            <option value="2.5">TET 2.5 c/b</option>
+            <option value="3.0">TET 3.0 c/b</option>
+            <option value="3.5">TET 3.5 c/b</option>
+            <option value="4.0" selected>TET 4.0 c/b</option>
+            <option value="4.5">TET 4.5 c/b</option>
+            <option value="5.0">TET 5.0 c/b</option>
+            <option value="5.5">TET 5.5 c/b</option>
+            <option value="6.0">TET 6.0 c/b</option>
+            <option value="6.5">TET 6.5 c/b</option>
+          </select>
+          <select id="sri-inductor">
+            <option value="Ketamina 2 mg/kg">Ketamina (2 mg/kg)</option>
+            <option value="Fentanilo 2 mcg/kg + Midazolam 0.1 mg/kg">Fentanilo + Midazolam</option>
+            <option value="Midazolam 0.3 mg/kg">Midazolam pleno (0.3 mg/kg)</option>
+            <option value="Propofol 2 mg/kg">Propofol (2 mg/kg)</option>
+            <option value="Sin sedación">Sin inductor</option>
+          </select>
+          <select id="sri-relajante">
+            <option value="Rocuronio 1 mg/kg">Rocuronio (1 mg/kg)</option>
+            <option value="Succinilcolina 1.5 mg/kg">Succinilcolina (1.5 mg/kg)</option>
+            <option value="Sin bloqueador neuromuscular">Sin bloqueador</option>
+          </select>
+          <button class="primary" id="btn-intubar">Intubar + Conectar VM</button>
+        </div>
+
+        <div style="font-size:0.75rem; color:var(--muted); margin-bottom:4px;">Accesos Vasculares y Monitorización Invasiva:</div>
+        <div class="row-flex">
+          <button class="quick-btn" data-accion="Canalizar 2 vías venosas periféricas de grueso calibre y tomar glicemia capilar">2 Vías IV + Glicemia</button>
+          <button class="quick-btn" data-accion="Colocar acceso intraóseo tibial proximal">Acceso Intraóseo (IO)</button>
+          <button class="quick-btn" data-accion="Colocar catéter venoso central (CVC) ecoguiado">Catéter Venoso Central</button>
+          <button class="quick-btn" data-accion="Colocar línea arterial radial para monitorización invasiva de PA">Línea Arterial</button>
+          <button class="quick-btn" data-accion="Colocar sonda vesical Foley para cuantificar diuresis horaria">Sonda Vesical</button>
+          <button class="quick-btn" data-accion="Colocar sonda nasogástrica/orogástrica a gravedad">Sonda SNG/SOG</button>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="tab-liq">
+        <div style="font-size:0.75rem; color:var(--muted); margin-bottom:4px;">Expansión de Volumen y Hemoderivados:</div>
+        <div class="row-flex" style="margin-bottom:10px;">
+          <button class="quick-btn" data-accion="Administrar bolo de SSN 0.9% a 10 ml/kg IV en 15 min">Bolo SSN 10 ml/kg</button>
+          <button class="quick-btn" data-accion="Administrar bolo de SSN 0.9% a 20 ml/kg IV rápido">Bolo SSN 20 ml/kg</button>
+          <button class="quick-btn" data-accion="Administrar bolo de Lactato de Ringer a 20 ml/kg IV">Bolo Ringer 20 ml/kg</button>
+          <button class="quick-btn" data-accion="Iniciar líquidos de mantenimiento isotónicos (SSN 0.9% + KCl) a 100% Holiday-Segar">Mantenimiento H-S</button>
+          <button class="quick-btn" data-accion="Transfundir Glóbulos Rojos Empacados a 10 ml/kg IV">GRE 10 ml/kg</button>
+        </div>
+
+        <div style="font-size:0.75rem; color:var(--muted); margin-bottom:4px;">Bombas de Infusión Continua:</div>
+        <div class="row-flex">
+          <select id="inf-farmaco">
+            <option value="Norepinefrina">Norepinefrina (mcg/kg/min)</option>
+            <option value="Adrenalina">Adrenalina (mcg/kg/min)</option>
+            <option value="Dopamina">Dopamina (mcg/kg/min)</option>
+            <option value="Dobutamina">Dobutamina (mcg/kg/min)</option>
+            <option value="Milrinona">Milrinona (mcg/kg/min)</option>
+            <option value="Fentanilo">Fentanilo (mcg/kg/h)</option>
+            <option value="Midazolam">Midazolam (mcg/kg/min)</option>
+            <option value="Insulina Regular">Insulina Regular (UI/kg/h)</option>
+          </select>
+          <input type="number" id="inf-dosis" value="0.1" step="0.05" style="width:90px;" />
+          <button class="primary" id="btn-infusion">Iniciar / Ajustar Infusión</button>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="tab-meds">
+        <div style="font-size:0.75rem; color:var(--muted); margin-bottom:4px;">Fármacos de Urgencias Frecuentes:</div>
+        <div class="row-flex" style="margin-bottom:10px;">
+          <button class="quick-btn" data-accion="Administrar Ceftriaxona 50 mg/kg IV (máx 2g) primera dosis">Ceftriaxona 50 mg/kg</button>
+          <button class="quick-btn" data-accion="Administrar Vancomicina 15 mg/kg IV en infusión">Vancomicina 15 mg/kg</button>
+          <button class="quick-btn" data-accion="Administrar Hidrocortisona 2 mg/kg IV dosis de estrés">Hidrocortisona 2 mg/kg</button>
+          <button class="quick-btn" data-accion="Administrar Metilprednisolona 2 mg/kg IV">Metilprednisolona 2 mg/kg</button>
+          <button class="quick-btn" data-accion="Administrar Sulfato de Magnesio 50 mg/kg IV en 20 min">Sulfato Magnesio 50 mg/kg</button>
+          <button class="quick-btn" data-accion="Administrar Midazolam 0.1 mg/kg IV dosis de rescate anticonvulsivo">Midazolam 0.1 mg/kg</button>
+          <button class="quick-btn" data-accion="Administrar Fenitoína 20 mg/kg IV impregnación">Fenitoína 20 mg/kg</button>
+          <button class="quick-btn" data-accion="Administrar Dextrosa al 10% a 2 ml/kg IV bolo">Dextrosa 10% (2 ml/kg)</button>
+          <button class="quick-btn" data-accion="Administrar Gluconato de Calcio 10% a 100 mg/kg (1 ml/kg) IV lento">Gluconato Calcio 1 ml/kg</button>
+          <button class="quick-btn" data-accion="Administrar Prostaglandina E1 (Alprostadil) infusión 0.05 mcg/kg/min">Prostaglandina E1</button>
+        </div>
+
+        <div style="font-size:0.75rem; color:var(--muted); margin-bottom:4px;">Orden Médica Libre:</div>
+        <div class="row-flex">
+          <input type="text" id="input-orden" class="flex-grow" placeholder="Ej: Nebulizar con salbutamol + bromuro de ipratropio, o administrar adenosina 0.1 mg/kg..." />
+          <button class="primary" id="btn-orden">Ejecutar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL DERECHO: EVOLUCIÓN, LABORATORIOS E IMÁGENES -->
+    <div class="card">
+      <div class="tabs" id="right-tabs">
+        <button class="tab-btn active" data-tab="rtab-log">📋 Evolución Clínica</button>
+        <button class="tab-btn" data-tab="rtab-labs">🧪 Laboratorios</button>
+        <button class="tab-btn" data-tab="rtab-img">🩻 Imágenes & POCUS</button>
+      </div>
+
+      <div class="tab-pane active" id="rtab-log">
+        <div class="log-box" id="log-box"></div>
+      </div>
+
+      <div class="tab-pane" id="rtab-labs">
+        <div class="row-flex" style="margin-bottom:8px;">
+          <button class="quick-btn" data-accion="Solicitar gasometría arterial/venosa con lactato y electrolitos iónicos">Gasometría + Lactato</button>
+          <button class="quick-btn" data-accion="Solicitar hemograma completo, reticulocitos y tiempos de coagulación (TP, TPT, INR, fibrinógeno)">Hemograma + Coagulación</button>
+          <button class="quick-btn" data-accion="Solicitar química completa: Na, K, Cl, Ca, Mg, P, glucosa, BUN, creatinina, AST, ALT, albúmina, PCR y procalcitonina">Química + Reactantes</button>
+          <button class="quick-btn" data-accion="Tomar hemocultivos x2, urocultivo y panel respiratorio">Cultivos</button>
+        </div>
+        <div id="labs-container" style="max-height:230px; overflow-y:auto;"></div>
+      </div>
+
+      <div class="tab-pane" id="rtab-img">
+        <div class="row-flex" style="margin-bottom:8px;">
+          <button class="quick-btn" data-accion="Solicitar radiografía de tórax portátil AP">Rx Tórax</button>
+          <button class="quick-btn" data-accion="Realizar POCUS pulmonar y cardíaco (colapsabilidad de VCI, contractilidad ventricular y líneas B)">POCUS Cardiopulmonar</button>
+          <button class="quick-btn" data-accion="Realizar electrocardiograma de 12 derivaciones">ECG 12 Derivaciones</button>
+          <button class="quick-btn" data-accion="Solicitar ultrasonido abdominal / FAST">US Abdominal</button>
+        </div>
+        <div id="img-container" style="max-height:230px; overflow-y:auto;"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>hecho por MR Jaramillo</footer>
+</div>
+
+<!-- MODAL DE DEBRIEFING -->
+<div class="modal" id="modal-eval">
+  <div class="modal-content">
+    <div class="row-flex" style="justify-content:space-between;">
+      <h2 style="margin:0; color:var(--blue);">🎓 Auditoría Clínica y Debriefing Diagnóstico</h2>
+      <span id="eval-score" style="font-size:1.7rem; font-weight:800; color:var(--green);">--/100</span>
+    </div>
+    <div id="firebase-status" style="font-size:0.78rem; color:var(--green); margin-top:4px;"></div>
+    <hr style="border-color:var(--border); margin:12px 0;">
+    <div id="eval-body" style="line-height:1.55; font-size:0.9rem;"></div>
+    <button class="primary" style="margin-top:16px; width:100%;" onclick="document.getElementById('modal-eval').style.display='none'">Cerrar Evaluación</button>
+  </div>
+</div>
+
+<!-- MODAL HISTORIAL FIREBASE -->
+<div class="modal" id="modal-historial">
+  <div class="modal-content">
+    <div class="row-flex" style="justify-content:space-between;">
+      <h2 style="margin:0; color:var(--blue);">📚 Casos Clínicos Guardados (Firebase)</h2>
+      <button onclick="document.getElementById('modal-historial').style.display='none'">Cerrar ✕</button>
+    </div>
+    <div id="lista-historial" style="margin-top:12px;">Cargando...</div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  // ⚠️ REEMPLAZA CON TU CONFIGURACIÓN DE FIREBASE
+  const firebaseConfig = {
+    apiKey: "TU_API_KEY",
+    authDomain: "TU_PROYECTO.firebaseapp.com",
+    projectId: "TU_PROYECTO",
+    storageBucket: "TU_PROYECTO.appspot.com",
+    messagingSenderId: "TU_SENDER_ID",
+    appId: "TU_APP_ID"
+  };
+
+  let db = null;
+  try {
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+  } catch (err) {}
+
+  let simData = null;
+  let promptOriginal = "";
+  let gameMode = "tutor"; // "tutor" | "real"
+  let currentFC = 0;
+  let currentFR = 0;
+  let currentSpo2 = 98;
+  let currentRitmo = "Sinusal";
+  let enParo = false;
+
+  // Reloj y cola de estudios para Modo Real
+  let realSeconds = 0;
+  let realClockInterval = null;
+  let autoDeterioroCounter = 0;
+  let pendingStudies = [];
+  let cprSeconds = 0;
+  let cprInterval = null;
+
+  // --- SELECTOR DE MODO TUTOR VS MODO REAL ---
+  const btnTutor = document.getElementById("btn-mode-tutor");
+  const btnReal = document.getElementById("btn-mode-real");
+  const clockDisplay = document.getElementById("clock-display");
+
+  function setGameMode(mode) {
+    gameMode = mode;
+    btnTutor.classList.toggle("active-tutor", mode === "tutor");
+    btnReal.classList.toggle("active-real", mode === "real");
+    clockDisplay.classList.toggle("real-active", mode === "real");
+
+    if (mode === "tutor") {
+      detenerRelojReal();
+      clockDisplay.textContent = `🎓 Sin Límite (Min ${simData ? simData.estado.minuto : 0})`;
+    } else {
+      document.getElementById("tutor-box").style.display = "none";
+      if (simData && !simData.estado.fallecido) iniciarRelojReal();
+    }
+  }
+
+  btnTutor.addEventListener("click", () => setGameMode("tutor"));
+  btnReal.addEventListener("click", () => setGameMode("real"));
+
+  function iniciarRelojReal() {
+    detenerRelojReal();
+    realClockInterval = setInterval(() => {
+      if (!simData || simData.estado.fallecido) return detenerRelojReal();
+      realSeconds++;
+      autoDeterioroCounter++;
+
+      if (realSeconds % 6 === 0) {
+        simData.estado.minuto += 1;
+        revisarEstudiosPendientes();
+      }
+
+      const mm = String(Math.floor(realSeconds / 60)).padStart(2, "0");
+      const ss = String(realSeconds % 60).padStart(2, "0");
+      clockDisplay.textContent = `⏱️ Guardia: ${mm}:${ss} (Min ${simData.estado.minuto})`;
+      document.getElementById("v-min").textContent = `Minuto clínico: ${simData.estado.minuto}`;
+
+      if (autoDeterioroCounter >= 24) {
+        autoDeterioroCounter = 0;
+        enviarAccion("Evolución espontánea tras transcurrir 4 minutos de guardia sin nuevas intervenciones", true);
+      }
+    }, 1000);
+  }
+
+  function detenerRelojReal() {
+    if (realClockInterval) {
+      clearInterval(realClockInterval);
+      realClockInterval = null;
+    }
+  }
+
+  function revisarEstudiosPendientes() {
+    if (!simData) return;
+    const minActual = simData.estado.minuto;
+    pendingStudies.forEach(est => {
+      if (!est.entregado && minActual >= est.minutoListo) {
+        est.entregado = true;
+        est.el.classList.remove("pending");
+        est.el.innerHTML = `<strong style="color:var(--blue);">[Min ${minActual}] ${est.titulo}</strong>
+${est.contenido}`;
+        agregarLog(`📄 Resultado disponible: ${est.titulo}.`, "good");
+        SoundEngine.playAlarm("warn");
+      }
+    });
+  }
+
+  // --- MOTOR DE SONIDO CLÍNICO (WEB AUDIO API) ---
+  const SoundEngine = {
+    ctx: null,
+    enabled: false,
+    flatlineOsc: null,
+
+    init() {
+      if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (this.ctx.state === "suspended") this.ctx.resume();
+    },
+
+    toggle() {
+      this.init();
+      this.enabled = !this.enabled;
+      if (!this.enabled) this.stopFlatline();
+      return this.enabled;
+    },
+
+    playQRS(spo2) {
+      if (!this.enabled || !this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const freq = spo2 >= 95 ? 880 : spo2 >= 90 ? 780 : spo2 >= 85 ? 660 : 540;
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+      gain.gain.setValueAtTime(0.06, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.085);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.09);
+    },
+
+    playAlarm(nivel = "warn") {
+      if (!this.enabled || !this.ctx) return;
+      const beeps = nivel === "crit" ? [960, 960, 960] : [660, 660];
+      beeps.forEach((freq, i) => {
+        const start = this.ctx.currentTime + i * 0.16;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = nivel === "crit" ? "triangle" : "sine";
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.07, start);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.11);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.12);
+      });
+    },
+
+    startFlatline() {
+      if (!this.enabled || !this.ctx || this.flatlineOsc) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+      gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      this.flatlineOsc = { osc, gain };
+    },
+
+    stopFlatline() {
+      if (this.flatlineOsc) {
+        try { this.flatlineOsc.osc.stop(); } catch (e) {}
+        this.flatlineOsc = null;
+      }
+    },
+
+    playDefibChargeAndShock() {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(1400, now + 1.1);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.15);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 1.15);
+
+      const shockOsc = this.ctx.createOscillator();
+      const shockGain = this.ctx.createGain();
+      shockOsc.type = "square";
+      shockOsc.frequency.setValueAtTime(110, now + 1.18);
+      shockOsc.frequency.exponentialRampToValueAtTime(30, now + 1.35);
+      shockGain.gain.setValueAtTime(0.18, now + 1.18);
+      shockGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.38);
+      shockOsc.connect(shockGain);
+      shockGain.connect(this.ctx.destination);
+      shockOsc.start(now + 1.18);
+      shockOsc.stop(now + 1.4);
+    },
+
+    playVentBreath() {
+      if (!this.enabled || !this.ctx) return;
+      const bufferSize = this.ctx.sampleRate * 0.45;
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.value = 420;
+      filter.Q.value = 1.8;
+
+      const gain = this.ctx.createGain();
+      const now = this.ctx.currentTime;
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.032, now + 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      noise.start(now);
+    },
+
+    playAuscultation(tipo = "normal") {
+      if (!this.enabled) {
+        this.toggle();
+        document.getElementById("btn-audio").textContent = "🔊 Sonido UCI";
+        document.getElementById("btn-audio").classList.add("active-toggle");
+      }
+      if (!this.ctx) return;
+      this.playVentBreath();
+      if (tipo === "sibilancias") {
+        const now = this.ctx.currentTime + 0.25;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(680, now);
+        osc.frequency.linearRampToValueAtTime(520, now + 0.65);
+        gain.gain.setValueAtTime(0.045, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.72);
+      } else if (tipo === "crepitantes") {
+        for (let i = 0; i < 6; i++) {
+          const t = this.ctx.currentTime + 0.1 + i * 0.06;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = "square";
+          osc.frequency.setValueAtTime(1200 + Math.random() * 600, t);
+          gain.gain.setValueAtTime(0.03, t);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.025);
+        }
+      }
+    }
+  };
+
+  document.getElementById("btn-audio").addEventListener("click", (e) => {
+    const on = SoundEngine.toggle();
+    e.target.textContent = on ? "🔊 Sonido UCI" : "🔇 Sonido UCI";
+    e.target.classList.toggle("active-toggle", on);
+  });
+
+  document.getElementById("btn-auscultar").addEventListener("click", () => {
+    if (!simData) return alert("Ingresa un paciente primero.");
+    const respText = (simData.estado.examen_fisico?.respiratorio || "").toLowerCase();
+    if (respText.includes("sibilan") || respText.includes("espiración prolongada")) {
+      SoundEngine.playAuscultation("sibilancias");
+    } else if (respText.includes("crepit") || respText.includes("estertor")) {
+      SoundEngine.playAuscultation("crepitantes");
+    } else {
+      SoundEngine.playAuscultation("normal");
+    }
+    agregarLog(`🩺 Auscultación pulmonar: ${simData.estado.examen_fisico?.respiratorio || "Murmullo vesicular presente."}`, "");
+  });
+
+  function setupTabs(containerId) {
+    const container = document.getElementById(containerId);
+    const buttons = container.querySelectorAll(".tab-btn");
+    buttons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        buttons.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const parent = container.parentElement;
+        parent.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+        document.getElementById(btn.dataset.tab).classList.add("active");
+      });
+    });
+  }
+  setupTabs("left-tabs");
+  setupTabs("right-tabs");
+
+  // --- MOTOR DE 4 CURVAS FISIOLÓGICAS ---
+  const canvases = {
+    ecg: { el: document.getElementById("canvas-ecg"), color: "#10b981", x: 0, phase: 0 },
+    spo2: { el: document.getElementById("canvas-spo2"), color: "#38bdf8", x: 0, phase: 0 },
+    pa: { el: document.getElementById("canvas-pa"), color: "#ef4444", x: 0, phase: 0 },
+    etco2: { el: document.getElementById("canvas-etco2"), color: "#f59e0b", x: 0, phase: 0 }
+  };
+
+  function resizeCanvases() {
+    Object.values(canvases).forEach(c => {
+      c.el.width = c.el.offsetWidth || 320;
+      c.el.height = 46;
+    });
+  }
+  window.addEventListener("resize", resizeCanvases);
+  resizeCanvases();
+
+  function getWaveY(type, phase, h) {
+    const mid = h * 0.58;
+    const r = (currentRitmo || "").toUpperCase();
+
+    if (type === "etco2") {
+      if (!simData || !simData.estado.etco2 || simData.estado.etco2 <= 0) return h * 0.85;
+      const p = phase % 1;
+      const amp = Math.min(0.68, (simData.estado.etco2 / 45) * 0.62);
+      if (p < 0.35) return h * 0.85;
+      if (p < 0.42) return h * 0.85 - ((p - 0.35) / 0.07) * (h * amp);
+      if (p < 0.85) return h * (0.85 - amp);
+      return h * (0.85 - amp) + ((p - 0.85) / 0.15) * (h * amp);
+    }
+
+    if (enParo && (type === "spo2" || type === "pa")) {
+      return h * 0.82;
+    }
+
+    if (type === "ecg") {
+      if (r.includes("ASISTOLIA") || (currentFC <= 0 && !r.includes("FV"))) {
+        return mid + (Math.random() - 0.5) * 1.2;
+      }
+      if (r.includes("FV") || r.includes("FIBRILACIÓN")) {
+        return mid + Math.sin(phase * 19) * 9 + Math.cos(phase * 31) * 7 + (Math.random() - 0.5) * 6;
+      }
+      if (r.includes("TVSP") || r.includes("TAQUICARDIA VENTRICULAR")) {
+        return mid - Math.sin((phase % 1) * Math.PI * 2) * (h * 0.42);
+      }
+
+      const p = phase % 1;
+      if (p < 0.1) return mid - Math.sin(p * Math.PI * 10) * 3.5;
+      if (p > 0.18 && p < 0.21) return mid + 4;
+      if (p >= 0.21 && p <= 0.26) return mid - (h * 0.48) * Math.sin(((p - 0.21) / 0.05) * Math.PI);
+      if (p > 0.26 && p < 0.30) return mid + 8;
+      if (p > 0.42 && p < 0.58) return mid - Math.sin(((p - 0.42) / 0.16) * Math.PI) * 6;
+      return mid;
+    }
+
+    if (currentFC <= 0) return mid;
+    const p = phase % 1;
+    if (type === "spo2") {
+      return mid - (Math.sin(p * Math.PI * 2) * 0.6 + Math.sin(p * Math.PI * 4 - 0.8) * 0.25) * (h * 0.34);
+    } else {
+      if (p < 0.25) return mid - Math.sin((p / 0.25) * (Math.PI / 2)) * (h * 0.40);
+      if (p < 0.45) return mid - (h * 0.40) + ((p - 0.25) / 0.2) * (h * 0.24);
+      if (p < 0.52) return mid - (h * 0.16) - Math.sin(((p - 0.45) / 0.07) * Math.PI) * 3.5;
+      return mid - (h * 0.16) * (1 - (p - 0.52) / 0.48);
+    }
+  }
+
+  let alarmTick = 0;
+  function animateWaves() {
+    const r = (currentRitmo || "").toUpperCase();
+    const isAsystole = r.includes("ASISTOLIA") || (enParo && currentFC <= 0 && !r.includes("FV") && !r.includes("AESP"));
+    const effectiveRate = r.includes("FV") ? 220 : r.includes("AESP") ? 50 : currentFC;
+    const beatsPerSec = effectiveRate > 0 ? effectiveRate / 60 : 0.5;
+    const breathsPerSec = currentFR > 0 ? currentFR / 60 : 0.2;
+
+    if (simData && !simData.estado.fallecido) {
+      if (isAsystole) {
+        SoundEngine.startFlatline();
+      } else {
+        SoundEngine.stopFlatline();
+      }
+
+      alarmTick++;
+      if (alarmTick % 300 === 0) {
+        const ventWarn = simData.estado.ventilador?.activo && (simData.estado.ventilador.p_pico > 30 || simData.estado.ventilador.driving_pressure > 15);
+        if (enParo || currentSpo2 < 88 || (currentFC > 0 && currentFC < 60)) {
+          SoundEngine.playAlarm("crit");
+        } else if (currentFC > 165 || currentSpo2 < 92 || ventWarn) {
+          SoundEngine.playAlarm("warn");
+        }
+      }
+    } else {
+      SoundEngine.stopFlatline();
+    }
+
+    Object.entries(canvases).forEach(([key, c]) => {
+      const ctx = c.el.getContext("2d");
+      const w = c.el.width;
+      const h = c.el.height;
+
+      const prevX = c.x;
+      const prevY = getWaveY(key, c.phase, h);
+
+      c.x += 2.1;
+      const rate = key === "etco2" ? breathsPerSec : beatsPerSec;
+      const prevPhaseFloor = Math.floor(c.phase);
+      c.phase += rate * 0.016;
+
+      if (Math.floor(c.phase) > prevPhaseFloor) {
+        if (key === "ecg" && !enParo && currentFC > 0) {
+          SoundEngine.playQRS(currentSpo2);
+        }
+        if (key === "etco2" && simData?.estado?.ventilador?.activo && !simData?.estado?.fallecido) {
+          SoundEngine.playVentBreath();
+        }
+      }
+
+      if (c.x >= w) {
+        c.x = 0;
+        ctx.clearRect(0, 0, 18, h);
+        return;
+      }
+
+      ctx.clearRect(c.x, 0, 14, h);
+      ctx.strokeStyle = c.color;
+      ctx.lineWidth = 1.9;
+      ctx.beginPath();
+      ctx.moveTo(prevX, prevY);
+      ctx.lineTo(c.x, getWaveY(key, c.phase, h));
+      ctx.stroke();
+    });
+    requestAnimationFrame(animateWaves);
+  }
+  animateWaves();
+
+  function calcularAntropometria(peso, talla, edadAnos) {
+    const sc = talla ? Math.sqrt((peso * talla) / 3600) : (peso * 4 + 7) / (peso + 90);
+    const tetRaw = (edadAnos / 4) + 3.5;
+    const tetPar = Math.max(3.0, Math.round(tetRaw * 2) / 2);
+    const hs24 = peso <= 10 ? peso * 100 : peso <= 20 ? 1000 + (peso - 10) * 50 : 1500 + (peso - 20) * 20;
+
+    document.getElementById("calc-strip").style.display = "grid";
+    document.getElementById("c-antro").textContent = `${peso} kg | ${talla || "--"} cm | SC: ${sc.toFixed(2)} m²`;
+    document.getElementById("c-tet").textContent = `${tetPar.toFixed(1)} mm (Fijar: ${(tetPar * 3).toFixed(1)} cm)`;
+    document.getElementById("c-sri1").textContent = `Ket: ${(peso * 2).toFixed(1)} mg | Fent: ${(peso * 2).toFixed(1)} mcg`;
+    document.getElementById("c-sri2").textContent = `Roc: ${(peso * 1).toFixed(1)} mg | Mid: ${(peso * 0.2).toFixed(1)} mg`;
+    document.getElementById("c-vt").textContent = `${Math.round(peso * 6)} - ${Math.round(peso * 8)} ml`;
+    document.getElementById("c-liq").textContent = `${Math.round(peso * 20)} ml | ${Math.round(hs24)} ml/d (${(hs24 / 24).toFixed(1)}/h)`;
+    document.getElementById("sri-tet").value = tetPar.toFixed(1);
+
+    const epiMg = (peso * 0.01).toFixed(2);
+    const epiMl = (peso * 0.1).toFixed(1);
+    const j2 = Math.round(peso * 2);
+    const j4 = Math.round(peso * 4);
+    const amioMg = Math.round(peso * 5);
+
+    document.getElementById("pals-epi").textContent = `${epiMg} mg (${epiMl} ml de 1:10,000)`;
+    document.getElementById("pals-desfib").textContent = `${j2} J → ${j4} J`;
+    document.getElementById("pals-amio").textContent = `${amioMg} mg`;
+
+    const jSelect = document.getElementById("pals-joules");
+    jSelect.innerHTML = `
+      <option value="${j2} J (2 J/kg)">${j2} J (2 J/kg)</option>
+      <option value="${j4} J (4 J/kg)">${j4} J (4 J/kg)</option>
+      <option value="${Math.round(peso * 6)} J (6 J/kg)">${Math.round(peso * 6)} J (6 J/kg)</option>
+    `;
+  }
+
+  function actualizarCronometroParo(activo) {
+    const panel = document.getElementById("code-blue-panel");
+    const mon = document.getElementById("monitor-box");
+    if (activo) {
+      panel.classList.add("active");
+      mon.classList.add("arrest");
+      if (!cprInterval) {
+        cprSeconds = 0;
+        cprInterval = setInterval(() => {
+          cprSeconds++;
+          const m = String(Math.floor(cprSeconds / 60)).padStart(2, "0");
+          const s = String(cprSeconds % 60).padStart(2, "0");
+          document.getElementById("pals-timer").textContent = `Ciclo RCP: ${m}:${s}`;
+        }, 1000);
+      }
+    } else {
+      panel.classList.remove("active");
+      mon.classList.remove("arrest");
+      if (cprInterval) {
+        clearInterval(cprInterval);
+        cprInterval = null;
+      }
+    }
+  }
+
+  function actualizarInterfaz() {
+    if (!simData) return;
+    const s = simData.estado;
+    currentFC = s.fc;
+    currentFR = s.fr;
+    currentSpo2 = s.spo2;
+    currentRitmo = s.ritmo_ecg || "Sinusal";
+    enParo = !!s.en_paro;
+
+    actualizarCronometroParo(enParo);
+    document.getElementById("pals-ritmo").textContent = currentRitmo.toUpperCase();
+    document.getElementById("pals-ciclos").textContent = s.ciclos_rcp || 0;
+
+    if (s.fallecido) {
+      actualizarCronometroParo(false);
+      detenerRelojReal();
+      SoundEngine.stopFlatline();
+      document.getElementById("exitus-banner").style.display = "block";
+    }
+
+    const pam = Math.round((s.pas + 2 * s.pad) / 3);
+    document.getElementById("v-fc").textContent = enParo ? "0" : s.fc;
+    document.getElementById("v-ritmo").textContent = currentRitmo;
+    document.getElementById("v-min").textContent = `Minuto clínico: ${s.minuto}`;
+    if (gameMode === "tutor") {
+      clockDisplay.textContent = `🎓 Sin Límite (Min ${s.minuto})`;
+    }
+    document.getElementById("v-spo2").textContent = enParo ? "--%" : `${s.spo2}%`;
+    document.getElementById("v-o2").textContent = s.o2;
+    document.getElementById("v-pa-tipo").textContent = s.dispositivos?.linea_arterial ? "PA INVASIVA (mmHg)" : "PANI (mmHg)";
+    document.getElementById("v-pa").textContent = enParo ? "0/0" : `${s.pas}/${s.pad}`;
+    document.getElementById("v-pam").textContent = `PAM: ${enParo ? 0 : pam} mmHg`;
+    document.getElementById("v-etco2").textContent = s.etco2 > 0 ? s.etco2 : "--";
+    document.getElementById("v-fr").textContent = `FR: ${s.fr} rpm`;
+    document.getElementById("v-temp").textContent = `${Number(s.temp).toFixed(1)} °C`;
+    document.getElementById("v-lc").textContent = enParo ? "Ausente" : `${s.lc} s`;
+    document.getElementById("v-gcs").textContent = s.gcs_detalle || `${s.gcs_total}/15`;
+
+    const diu = s.balance?.diuresis_ml_kg_h;
+    document.getElementById("v-diuresis").textContent = diu !== null && diu !== undefined ? `${diu} ml/kg/h` : "Sin sonda";
+    const bal = (s.balance?.ingresos_ml || 0) - (s.balance?.egresos_ml || 0);
+    document.getElementById("v-balance").textContent = `${bal >= 0 ? "+" : ""}${bal} ml`;
+
+    const d = s.dispositivos || {};
+    document.getElementById("dev-iv").classList.toggle("on", !!d.via_iv);
+    document.getElementById("dev-io").classList.toggle("on", !!d.intraosea);
+    document.getElementById("dev-cvc").classList.toggle("on", !!d.cvc);
+    document.getElementById("dev-la").classList.toggle("on", !!d.linea_arterial);
+    document.getElementById("dev-sv").classList.toggle("on", !!d.sonda_vesical);
+    const tetEl = document.getElementById("dev-tet");
+    tetEl.classList.toggle("on", !!d.tet);
+    tetEl.textContent = d.tet ? `TET ${d.tet}` : "Sin TET";
+
+    const infContainer = document.getElementById("infusiones-badges");
+    infContainer.innerHTML = (s.infusiones_activas || []).map(inf => `<span class="inf-pill">💉 ${inf}</span>`).join("");
+
+    const ef = s.examen_fisico || {};
+    document.getElementById("ef-general").textContent = ef.general || "--";
+    document.getElementById("ef-neuro").textContent = ef.neurologico || "--";
+    document.getElementById("ef-resp").textContent = ef.respiratorio || "--";
+    document.getElementById("ef-cardio").textContent = ef.cardiovascular || "--";
+    document.getElementById("ef-abdomen").textContent = ef.abdomen_renal || "--";
+
+    const v = s.ventilador;
+    const vBadge = document.getElementById("vent-badge");
+    if (v && v.activo) {
+      vBadge.textContent = `ACTIVO • ${v.modo}`;
+      vBadge.style.background = "#065f46";
+      vBadge.style.color = "#6ee7b7";
+      document.getElementById("vm-vte").textContent = `${v.vte_ml} ml | ${v.vol_min} L`;
+      document.getElementById("vm-pres").textContent = `${v.p_pico} / ${v.p_meseta} cmH₂O`;
+      document.getElementById("vm-dp").textContent = `${v.driving_pressure} cmH₂O`;
+      document.getElementById("vm-comp").textContent = `${v.compliance} ml/cmH₂O`;
+      document.getElementById("vm-raw").textContent = `${v.resistencia} cmH₂O/L/s`;
+      document.getElementById("vm-pafi").textContent = v.pafi > 0 ? `${v.pafi} mmHg` : "--";
+
+      document.getElementById("box-dp").classList.toggle("alert", v.driving_pressure > 15);
+      document.getElementById("box-ppico").classList.toggle("alert", v.p_pico > 30);
+
+      document.getElementById("vc-modo").value = v.modo || "PCV";
+      document.getElementById("vc-fio2").value = v.fio2;
+      document.getElementById("vc-fr").value = v.fr_prog;
+      document.getElementById("vc-pip").value = v.modo === "VCV" ? v.vt_prog_ml_kg : v.pip;
+      document.getElementById("vc-peep").value = v.peep;
+      document.getElementById("vc-ti").value = v.ti;
+    } else {
+      vBadge.textContent = "EN ESPERA (STANDBY)";
+      vBadge.style.background = "#1e293b";
+      vBadge.style.color = "#94a3b8";
+    }
+  }
+
+  function agregarLog(msg, tipo = "") {
+    const box = document.getElementById("log-box");
+    const min = simData ? simData.estado.minuto : 0;
+    const div = document.createElement("div");
+    div.className = `log-item ${tipo}`;
+    div.innerHTML = `<strong>[Min ${min}]</strong> ${msg}`;
+    box.prepend(div);
+  }
+
+  document.getElementById("select-plantilla").addEventListener("change", (e) => {
+    if (e.target.value) document.getElementById("input-escenario").value = e.target.value;
+  });
+
+  const savedUser = localStorage.getItem("sim_ped_user");
+  if (savedUser) document.getElementById("input-usuario").value = savedUser;
+
+  async function generarCaso() {
+    const promptUsuario = document.getElementById("input-escenario").value.trim();
+    const usuario = document.getElementById("input-usuario").value.trim() || "Anónimo";
+    if (!promptUsuario) return alert("Selecciona una plantilla o describe el paciente hipotético.");
+
+    localStorage.setItem("sim_ped_user", usuario);
+    promptOriginal = promptUsuario;
+
+    const btn = document.getElementById("btn-generar");
+    btn.disabled = true;
+    btn.textContent = "Ingresando...";
+
+    try {
+      const res = await fetch("/.netlify/functions/simulador", {
+        method: "POST",
+        body: JSON.stringify({ modo: "generar", promptUsuario })
+      });
+      const data = await res.json();
+
+      simData = { paciente: data.paciente, estado: data.estado, historial: [] };
+      pendingStudies = [];
+      realSeconds = 0;
+      autoDeterioroCounter = 0;
+
+      SoundEngine.stopFlatline();
+      document.getElementById("tutor-box").style.display = "none";
+      document.getElementById("exitus-banner").style.display = "none";
+      document.getElementById("log-box").innerHTML = "";
+      document.getElementById("labs-container").innerHTML = "";
+      document.getElementById("img-container").innerHTML = "";
+      document.getElementById("badge-paciente").textContent = `${data.paciente.nombre_ficticio} • ${data.paciente.edad_texto} • ${data.paciente.peso_kg} kg • Modalidad: ${gameMode.toUpperCase()}`;
+      document.getElementById("ef-anamnesis").textContent = data.paciente.anamnesis;
+      document.getElementById("btn-finalizar").disabled = false;
+
+      calcularAntropometria(data.paciente.peso_kg, data.paciente.talla_cm, data.paciente.edad_anos);
+      actualizarInterfaz();
+      agregarLog(data.hallazgos_iniciales, "warn");
+
+      if (gameMode === "real") {
+        iniciarRelojReal();
+      } else {
+        detenerRelojReal();
+      }
+    } catch (e) {
+      alert("Error conectando con Netlify Functions.");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Ingresar Paciente";
+    }
+  }
+
+  async function enviarAccion(accionClinica, esAutomatica = false) {
+    if (!simData) return alert("Primero ingresa un paciente.");
+    if (simData.estado.fallecido) return alert("La simulación ha finalizado por fallecimiento del paciente.");
+
+    if (!esAutomatica) {
+      autoDeterioroCounter = 0;
+      agregarLog(`⏳ ${accionClinica}...`);
+    }
+
+    try {
+      const res = await fetch("/.netlify/functions/simulador", {
+        method: "POST",
+        body: JSON.stringify({ modo: "accion", modoJuego: gameMode, estadoActual: simData, accionClinica })
+      });
+      const data = await res.json();
+
+      const estabaEnParo = simData.estado.en_paro;
+      const minsUsados = data.minutos_consumidos || 2;
+      simData.estado = data.estado_nuevo;
+      simData.historial.push({
+        minuto: simData.estado.minuto,
+        accion: accionClinica,
+        evaluacion: data.feedback_tutor_inmediato
+      });
+
+      actualizarInterfaz();
+      revisarEstudiosPendientes();
+
+      const sufijoTiempo = gameMode === "real" && !esAutomatica ? ` (+${minsUsados} min)` : "";
+      agregarLog(`${data.respuesta_clinica}${sufijoTiempo}`, data.tipo_alerta || "");
+
+      if (gameMode === "tutor" && data.feedback_tutor_inmediato && !esAutomatica) {
+        const tBox = document.getElementById("tutor-box");
+        tBox.className = `tutor-box ${data.tipo_alerta || ""}`;
+        tBox.style.display = "block";
+        document.getElementById("tutor-text").textContent = data.feedback_tutor_inmediato;
+      }
+
+      if (!estabaEnParo && simData.estado.en_paro) {
+        SoundEngine.playAlarm("crit");
+      }
+
+      const est = data.estudio_reportado;
+      if (est && est.titulo && est.contenido) {
+        const containerId = est.categoria === "imagen" ? "img-container" : "labs-container";
+        const card = document.createElement("div");
+        card.className = "study-card";
+        const demora = est.demora_entrega_min || 0;
+
+        if (gameMode === "real" && demora > 0) {
+          const minutoListo = simData.estado.minuto + demora;
+          card.classList.add("pending");
+          card.innerHTML = `<strong>⏳ ${est.titulo}</strong>
+En proceso de laboratorio/gabinete (estimado: Minuto ${minutoListo}).`;
+          pendingStudies.push({
+            titulo: est.titulo,
+            contenido: est.contenido,
+            minutoListo,
+            entregado: false,
+            el: card
+          });
+        } else {
+          card.innerHTML = `<strong style="color:var(--blue);">[Min ${simData.estado.minuto}] ${est.titulo}</strong>
+${est.contenido}`;
+        }
+        document.getElementById(containerId).prepend(card);
+      }
+
+      if (simData.estado.fallecido) {
+        setTimeout(() => evaluarCaso(), 1200);
+      }
+    } catch (e) {
+      agregarLog("Error ejecutando la orden.", "crit");
+    }
+  }
+
+  document.getElementById("btn-padres").addEventListener("click", () => {
+    const q = document.getElementById("input-padres").value.trim();
+    if (!q) return;
+    document.getElementById("input-padres").value = "";
+    enviarAccion(`Interrogar a los padres del paciente: "${q}"`);
+  });
+  document.getElementById("input-padres").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("btn-padres").click();
+  });
+
+  document.getElementById("btn-pals-rcp").addEventListener("click", () => {
+    cprSeconds = 0;
+    enviarAccion("Realizar 1 ciclo de 2 minutos de RCP de alta calidad (compresiones torácicas y ventilación con FiO2 100%) y reevaluar ritmo");
+  });
+  document.getElementById("btn-pals-epi").addEventListener("click", () => {
+    enviarAccion("Administrar Adrenalina 0.01 mg/kg (0.1 ml/kg de solución 1:10,000) IV/IO en bolo rápido durante RCP");
+  });
+  document.getElementById("btn-pals-shock").addEventListener("click", () => {
+    SoundEngine.playDefibChargeAndShock();
+    const j = document.getElementById("pals-joules").value;
+    enviarAccion(`Administrar descarga eléctrica bifásica de ${j} y reanudar compresiones inmediatamente`);
+  });
+  document.getElementById("btn-pals-amio").addEventListener("click", () => {
+    enviarAccion("Administrar Amiodarona 5 mg/kg IV/IO en bolo para ritmo desfibrilable refractario");
+  });
+  document.getElementById("btn-pals-ht").addEventListener("click", () => {
+    enviarAccion("Identificar y tratar agresivamente causas reversibles de paro (H y T: expansión de volumen, oxigenación, corrección de acidosis/electrolitos)");
+  });
+  document.getElementById("btn-pals-stop").addEventListener("click", () => {
+    SoundEngine.stopFlatline();
+    enviarAccion("Suspender maniobras de reanimación cardiopulmonar y declarar fallecimiento del paciente");
+  });
+
+  document.getElementById("btn-intubar").addEventListener("click", () => {
+    const tet = document.getElementById("sri-tet").value;
+    const ind = document.getElementById("sri-inductor").value;
+    const rel = document.getElementById("sri-relajante").value;
+    enviarAccion(`Realizar Secuencia Rápida de Intubación con TET ${tet} mm con balón, inductor ${ind} y bloqueador ${rel}, verificar capnografía y conectar a ventilador mecánico`);
+  });
+
+  document.getElementById("btn-aplicar-vent").addEventListener("click", () => {
+    const modo = document.getElementById("vc-modo").value;
+    const fio2 = document.getElementById("vc-fio2").value;
+    const fr = document.getElementById("vc-fr").value;
+    const pip = document.getElementById("vc-pip").value;
+    const peep = document.getElementById("vc-peep").value;
+    const ti = document.getElementById("vc-ti").value;
+    const param = modo === "VCV" ? `VT ${pip} ml/kg` : `PIP ${pip} cmH2O`;
+    enviarAccion(`Ajustar ventilador mecánico en modo ${modo}: FiO2 ${fio2}%, FR ${fr} rpm, ${param}, PEEP ${peep} cmH2O, Ti ${ti} seg`);
+  });
+
+  document.getElementById("btn-infusion").addEventListener("click", () => {
+    const farmaco = document.getElementById("inf-farmaco").value;
+    const dosis = document.getElementById("inf-dosis").value;
+    enviarAccion(`Iniciar o titular infusión continua de ${farmaco} a ${dosis}`);
+  });
+
+  async function evaluarCaso() {
+    if (!simData) return;
+    detenerRelojReal();
+    SoundEngine.stopFlatline();
+    const btn = document.getElementById("btn-finalizar");
+    btn.disabled = true;
+    btn.textContent = "Evaluando...";
+
+    try {
+      const res = await fetch("/.netlify/functions/simulador", {
+        method: "POST",
+        body: JSON.stringify({ modo: "evaluar", modoJuego: gameMode, estadoActual: simData })
+      });
+      const evalData = await res.json();
+
+      document.getElementById("eval-score").textContent = `${evalData.puntaje}/100`;
+      const aciertos = evalData.aciertos.map(a => `<li>✅ ${a}</li>`).join("");
+      const errores = evalData.errores_y_mejoras.map(e => `<li>⚠️ ${e}</li>`).join("");
+
+      document.getElementById("eval-body").innerHTML = `
+        <p><strong>Modalidad:</strong> ${gameMode === "real" ? "⏱️ Modo Real (Contrarreloj)" : "🎓 Modo Tutor"} • <strong>Desenlace:</strong> ${evalData.desenlace_clinico || (simData.estado.fallecido ? "Fallecimiento" : "Sobrevida")}</p>
+        <p><strong>Diagnóstico Definitivo:</strong> ${evalData.diagnostico_definitivo}</p>
+        <p><strong>Fisiopatología y Análisis:</strong> ${evalData.explicacion_fisiopatologica}</p>
+        <h3 style="color:var(--green); margin-bottom:4px;">Aciertos</h3>
+        <ul>${aciertos || "<li>Ninguno registrado</li>"}</ul>
+        <h3 style="color:var(--yellow); margin-bottom:4px;">Errores y Puntos de Mejora</h3>
+        <ul>${errores || "<li>Manejo impecable</li>"}</ul>
+        <div style="background:var(--panel-dark); padding:10px; border-radius:8px; border-left:4px solid var(--blue); margin-top:10px;">
+          <strong>💡 Perla Clínica:</strong> ${evalData.perla_clinica}
+        </div>
+      `;
+      document.getElementById("modal-eval").style.display = "block";
+
+      const statusEl = document.getElementById("firebase-status");
+      if (db && firebaseConfig.projectId !== "TU_PROYECTO") {
+        const usuario = document.getElementById("input-usuario").value.trim() || "Anónimo";
+        await addDoc(collection(db, "simulaciones_ped"), {
+          usuario,
+          modalidad: gameMode,
+          promptOriginal,
+          edad: simData.paciente.edad_texto,
+          peso_kg: simData.paciente.peso_kg,
+          diagnostico: evalData.diagnostico_definitivo,
+          desenlace: evalData.desenlace_clinico || "",
+          puntaje: evalData.puntaje,
+          perla: evalData.perla_clinica,
+          fecha: serverTimestamp()
+        });
+        statusEl.textContent = "☁️ Guardado en Firebase.";
+      }
+    } catch (e) {
+      alert("Error al generar la evaluación.");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Finalizar y Evaluar Dx";
+    }
+  }
+
+  async function abrirHistorial() {
+    document.getElementById("modal-historial").style.display = "block";
+    const contenedor = document.getElementById("lista-historial");
+    if (!db || firebaseConfig.projectId === "TU_PROYECTO") {
+      contenedor.innerHTML = "<p style='color:var(--yellow);'>⚠️ Configura firebaseConfig para ver el historial guardado.</p>";
+      return;
+    }
+    const q = query(collection(db, "simulaciones_ped"), orderBy("fecha", "desc"), limit(20));
+    const snap = await getDocs(q);
+    contenedor.innerHTML = "";
+    snap.forEach((doc) => {
+      const d = doc.data();
+      const modTag = d.modalidad === "real" ? "⏱️ Real" : "🎓 Tutor";
+      const item = document.createElement("div");
+      item.className = "history-item";
+      item.innerHTML = `
+        <div>
+          <div style="font-size:0.75rem; color:var(--muted);">${d.usuario} • ${modTag} • ${d.edad} (${d.peso_kg} kg)</div>
+          <strong style="color:var(--blue);">${d.diagnostico}</strong>
+        </div>
+        <div class="row-flex">
+          <strong>${d.puntaje}/100</strong>
+          <button class="btn-practicar" data-prompt="${d.promptOriginal.replace(/"/g, '&quot;')}">Reintentar</button>
+        </div>
+      `;
+      contenedor.appendChild(item);
+    });
+    document.querySelectorAll(".btn-practicar").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.getElementById("input-escenario").value = btn.dataset.prompt;
+        document.getElementById("modal-historial").style.display = "none";
+        generarCaso();
+      });
+    });
+  }
+
+  document.getElementById("btn-generar").addEventListener("click", generarCaso);
+  document.getElementById("btn-finalizar").addEventListener("click", evaluarCaso);
+  document.getElementById("btn-historial").addEventListener("click", abrirHistorial);
+  document.getElementById("btn-orden").addEventListener("click", () => {
+    const input = document.getElementById("input-orden");
+    if (!input.value.trim()) return;
+    const val = input.value.trim();
+    input.value = "";
+    enviarAccion(val);
+  });
+  document.getElementById("input-orden").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("btn-orden").click();
+  });
+  document.querySelectorAll(".quick-btn").forEach(btn => {
+    btn.addEventListener("click", () => enviarAccion(btn.dataset.accion));
+  });
+</script>
+</body>
+</html>
