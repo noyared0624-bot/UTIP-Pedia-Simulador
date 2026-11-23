@@ -208,6 +208,9 @@ Devuelve exactamente este JSON:
     );
 
     const data = await response.json();
+    if (!response.ok || !data.candidates?.length) {
+      throw new Error("Gemini: " + (data.error?.message || JSON.stringify(data).slice(0, 300)));
+    }
     const textResult = data.candidates[0].content.parts[0].text;
 
     return {
